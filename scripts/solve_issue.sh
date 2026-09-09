@@ -322,9 +322,20 @@ if [[ "$VERDICT_LINE" == PASS* ]]; then
   # across 2026-09-06/07. Same discipline here: independently confirm via
   # the PR's own merged state, then confirm the merge commit is actually an
   # ancestor of the remote default branch, before believing PASS.
+  # NOTE: `gh pr view --json merged` is NOT a real field (gh errors with
+  # "Unknown JSON field: merged") — this silently failed on every single
+  # verification (empty MERGED_INFO after all 3 retries), so `landed` was
+  # ALWAYS false regardless of the real outcome. Caught live: PR #8 on cliq
+  # genuinely merged, but this bug made the script believe it hadn't, so it
+  # reopened the already-fixed issue and tried to close an already-merged
+  # PR (which gh correctly refused, "can't be closed because it was already
+  # merged"). Every prior "verifier approved but never merged" FAIL on a
+  # repo using this code path should be treated as suspect — some of those
+  # were likely real merges wrongly reported as failures. Use `state` and
+  # `mergedAt`, which actually exist, instead.
   merge_check_ok=false
   for attempt in 1 2 3; do
-    MERGED_INFO="$(gh pr view "$PR_NUM" --repo "$REPO_SLUG" --json merged,mergeCommit --jq '[.merged, .mergeCommit.oid // ""] | @tsv' 2>>"$VERIFY_LOG")"
+    MERGED_INFO="$(gh pr view "$PR_NUM" --repo "$REPO_SLUG" --json state,mergeCommit,mergedAt --jq '[(.state=="MERGED"), (.mergeCommit.oid // ""), (.mergedAt // "")] | @tsv' 2>>"$VERIFY_LOG")"
     if [[ -n "$MERGED_INFO" ]]; then
       merge_check_ok=true
       break
