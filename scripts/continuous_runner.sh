@@ -21,6 +21,29 @@
 
 set -uo pipefail
 
+# The orphan-prevention trap below only works if this process is its own
+# process-group LEADER (pgid == pid) — `kill -TERM -- -$$` targets a process
+# group, and if this script inherited its group from whatever shell launched
+# it (true for a plain `nohup bash continuous_runner.sh &`, only false when
+# launched via `setsid`, which watchdog.sh does but a manual restart might
+# not), the group being killed doesn't actually contain this script's
+# children — the kill silently no-ops and every dispatch orphans on exit
+# exactly like before the trap existed. Caught live: a manually-started
+# second instance left an orphaned run_queue.sh under init after being
+# killed, because it was never its own group leader. Force it here so the
+# guarantee holds no matter how this script is invoked.
+#
+# Guarded by an env var, not a `ps -o pgid=` comparison against $$: the ps-
+# based check false-triggered even when already launched via `setsid`
+# (observed live — likely a setsid/nohup/exec interaction that leaves pgid
+# reporting stale for one tick), causing a redundant self-re-exec that left
+# a harmless but confusing extra wrapper process sitting in `exec ... --wait`
+# around the real worker. An env var inherited by the child can't misfire.
+if [[ "${WARROOM_SESSION_LEADER:-0}" != "1" ]]; then
+  export WARROOM_SESSION_LEADER=1
+  exec setsid --wait "$0" "$@"
+fi
+
 WAR_ROOM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_DIR="$WAR_ROOM_DIR/scripts"
 CAP_FILE="$WAR_ROOM_DIR/state/_daily_cap.json"
@@ -28,6 +51,23 @@ REPOS_FILE="$WAR_ROOM_DIR/repos.json"
 LOG="$WAR_ROOM_DIR/logs/continuous_runner.log"
 MAX_EXTRA_PER_DAY=20
 GITHUB_USER="sagar0163"
+
+# Refuse to run a second instance. Nothing previously stopped this: the
+# watchdog's own flock only guards against two watchdog *invocations* racing
+# to launch a runner — it does nothing if a second runner is started some
+# other way (a manual restart while one is already alive, a stale terminal,
+# etc). Two live instances don't corrupt a single repo's git state directly
+# (run_queue.sh already flocks per-repo), but the council-run duplicate-issue
+# check and the daily-cap `jq += 1` update below are both racy read-modify-
+# write sequences with no per-process lock, so two runners really did lose
+# cap-file updates and could double-file council issues — caught live when a
+# second instance ended up running for over an hour before being noticed.
+RUNNER_LOCK="/tmp/warroom-runner-singleton.lock"
+exec 8>"$RUNNER_LOCK"
+if ! flock -n 8; then
+  echo "[$(date '+%F %T')] another continuous_runner.sh instance already holds $RUNNER_LOCK — exiting" >&2
+  exit 1
+fi
 
 # A plain `kill`/`pkill` against this top-level process (as opposed to -9,
 # which can't be trapped) previously left an in-flight run_queue.sh ->
@@ -37,8 +77,18 @@ GITHUB_USER="sagar0163"
 # timeout eventually expired on its own. On a graceful termination signal,
 # kill this whole process group so nothing is left behind.
 cleanup_on_exit() {
-  log "received termination signal — killing process group $$ to avoid leaving orphaned dispatches"
+  # Without this, a graceful TERM only killed the CURRENT batch's children —
+  # the trap ran, but never called exit, so the main loop just kept going and
+  # silently started a fresh lap with fresh children right after. Caught
+  # live: `kill -TERM` was sent to stop the runner, the trap fired and logged
+  # it, but new opencode dispatches for the next repo started seconds later
+  # anyway — the process never actually died. Untrap first so the group-wide
+  # TERM below (which we send to ourselves too, being in our own group)
+  # doesn't re-enter this handler, then exit for real.
+  trap - TERM INT
+  log "received termination signal — killing process group $$ to avoid leaving orphaned dispatches, then exiting"
   kill -TERM -- -$$ 2>/dev/null
+  exit 0
 }
 trap cleanup_on_exit TERM INT
 
