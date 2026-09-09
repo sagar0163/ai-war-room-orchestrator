@@ -53,6 +53,7 @@ LOG_PREFIX="$(cd "$(dirname "$LOG_PREFIX_ARG")" && pwd)/$(basename "$LOG_PREFIX_
 WORKER_LOG="${LOG_PREFIX}-worker.log"
 VERIFY_LOG="${LOG_PREFIX}-verify.log"
 FEATURE_BRANCH="war-room-issue-${ISSUE_NUM}"
+PLAN_FILE="WAR_ROOM_PLAN_${ISSUE_NUM}.md"
 
 # Start from a clean working tree. A previous FAILED attempt (on this issue
 # or another one) can leave uncommitted edits sitting in the repo; if the
@@ -105,33 +106,105 @@ if [[ "$pull_ok" != "true" ]]; then
   echo "WARNING: could not checkout/pull $DEFAULT_BRANCH after 3 attempts — proceeding with whatever local state exists" >> "$WORKER_LOG"
 fi
 
-# Always start this issue's feature branch fresh off an up-to-date default
-# branch. A stale branch left over from a previous FAILED attempt (rejected
-# review, or an earlier crash) would otherwise accumulate unrelated commits
-# or diverge from main across retries. Delete both local and remote copies
-# first (ignore errors — most of the time neither exists yet).
-(cd "$REPO_DIR" && git branch -D "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
-(cd "$REPO_DIR" && git push origin --delete "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
-(cd "$REPO_DIR" && git checkout -b "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+# Resume a previous attempt's real progress instead of always wiping it. A
+# worker that gets killed by dispatch.sh's 25-min timeout mid-task used to
+# lose everything on the next retry — this script unconditionally deleted
+# and recreated the feature branch at the top of every invocation, so a
+# worker that was 90% done when the clock ran out started completely over,
+# and could hit the same timeout again on the same ground it already
+# covered. Only reset fresh when there's nothing to lose: no local/remote
+# branch exists, or it exists but has no commits beyond the default branch
+# (an empty branch from a worker that never got anywhere). A branch that a
+# verifier explicitly REJECTED is deleted at that point (see the
+# --delete-branch below) specifically so it can never be mistaken for
+# resumable progress here — only an incomplete/timed-out attempt resumes.
+(cd "$REPO_DIR" && git fetch origin "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+EXISTING_AHEAD=0
+if (cd "$REPO_DIR" && git rev-parse --verify "origin/$FEATURE_BRANCH" >/dev/null 2>&1); then
+  (cd "$REPO_DIR" && git checkout -B "$FEATURE_BRANCH" "origin/$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+  EXISTING_AHEAD="$(cd "$REPO_DIR" && git rev-list --count "$DEFAULT_BRANCH..$FEATURE_BRANCH" 2>/dev/null || echo 0)"
+elif (cd "$REPO_DIR" && git rev-parse --verify "$FEATURE_BRANCH" >/dev/null 2>&1); then
+  (cd "$REPO_DIR" && git checkout "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+  EXISTING_AHEAD="$(cd "$REPO_DIR" && git rev-list --count "$DEFAULT_BRANCH..$FEATURE_BRANCH" 2>/dev/null || echo 0)"
+fi
+
+RESUME_NOTE=""
+if [[ "$EXISTING_AHEAD" =~ ^[0-9]+$ ]] && (( EXISTING_AHEAD > 0 )); then
+  PRIOR_LOG="$(cd "$REPO_DIR" && git log --oneline "$DEFAULT_BRANCH..$FEATURE_BRANCH" 2>/dev/null | head -c 2000)"
+  PRIOR_PLAN=""
+  if [[ -f "$REPO_DIR/$PLAN_FILE" ]]; then
+    PRIOR_PLAN="$(cat "$REPO_DIR/$PLAN_FILE" | head -c 3000)"
+  fi
+  echo "=== resuming existing $FEATURE_BRANCH, $EXISTING_AHEAD commit(s) ahead of $DEFAULT_BRANCH ===" >> "$WORKER_LOG"
+  RESUME_NOTE="
+IMPORTANT — this branch already has prior work from an earlier attempt that
+ran out of time (it was NOT rejected — a rejected attempt's branch is always
+deleted, so if you're seeing this, the earlier work was never judged wrong,
+just incomplete). Do NOT start over or discard it. Here is what's already
+committed:
+--- PRIOR COMMITS ---
+$PRIOR_LOG
+--- END PRIOR COMMITS ---
+$( [[ -n "$PRIOR_PLAN" ]] && printf -- '--- PRIOR PLAN FILE (%s), read this first to see what is already checked off ---\n%s\n--- END PRIOR PLAN ---\n' "$PLAN_FILE" "$PRIOR_PLAN" )
+Review what's already there — the commits AND the plan file above — then
+continue from exactly where the previous attempt left off. Update the plan
+file's checkboxes as you go rather than starting a new plan from scratch."
+else
+  (cd "$REPO_DIR" && git branch -D "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+  (cd "$REPO_DIR" && git push origin --delete "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+  (cd "$REPO_DIR" && git checkout -b "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
+fi
 
 WORKER_PROMPT="You are working in the git repo at: $REPO_DIR (GitHub: $REPO_SLUG, issue #$ISSUE_NUM).
 Task: $ISSUE_PROMPT
 
 IMPORTANT — branch discipline: you are already on a dedicated feature branch
-'$FEATURE_BRANCH', created fresh off an up-to-date '$DEFAULT_BRANCH'. Stay on
-'$FEATURE_BRANCH' — do not switch to '$DEFAULT_BRANCH' or any other branch.
-This branch will become a pull request, not a direct push.
+'$FEATURE_BRANCH', based on '$DEFAULT_BRANCH'. Stay on '$FEATURE_BRANCH' —
+do not switch to '$DEFAULT_BRANCH' or any other branch. This branch will
+become a pull request, not a direct push.
+
+IMPORTANT — you run under a 25-minute timeout, and the tool that picks up a
+retry after a timeout may be a DIFFERENT one than you (this pipeline falls
+back opencode -> hermes -> agy) with no memory of this conversation. Two
+things make that safe:
+
+A) Maintain a plan file at '$PLAN_FILE' in the repo root (git-tracked, on
+   this branch). Before writing any code, break the task into a checklist
+   of small, concrete subtasks (roughly 5-15 min of work each) and write it
+   there as markdown checkboxes, e.g.:
+     - [ ] Add pricing.json fetch + local cache
+     - [ ] Replace hardcoded model name in parseClaudeUsage
+     - [ ] Add --by provider|model|project flags to report command
+     - [ ] Unit tests for pricing lookup
+   As you finish each subtask, check its box and commit that change along
+   with the actual code. If you are the tool that picks this up after a
+   previous attempt timed out, READ THIS FILE FIRST (see below if one
+   already exists) instead of re-planning from zero — treat unchecked boxes
+   as your remaining work, not the whole task.
+
+B) Commit incrementally, not just once at the end: run
+   'git add -A && git commit -m \"WIP #$ISSUE_NUM: <what this chunk does>\"'
+   after each subtask from the plan file, not only when everything is
+   done. Every commit is real progress that survives even if you run out of
+   time before finishing — a future retry (by you or a different tool)
+   resumes from your last commit and your plan file's checkboxes, not from
+   scratch.
+$RESUME_NOTE
 
 Do the following yourself, don't ask questions:
 1. Read whatever files are relevant.
-2. Write the fix/feature and any tests needed.
-3. Run the project's test/build command if one exists; fix failures yourself.
-4. Stage and commit locally, ON '$FEATURE_BRANCH', with: git add -A && git commit
-   -m \"<clear message, reference #$ISSUE_NUM>\"
-5. Push the branch: git push -u origin $FEATURE_BRANCH
+2. Write/update '$PLAN_FILE' with your subtask checklist (or continue an
+   existing one — see above).
+3. Write the fix/feature and any tests needed, checking off plan items and
+   committing incrementally as described above as you go.
+4. Run the project's test/build command if one exists; fix failures yourself.
+5. Once everything is complete and tests pass, delete '$PLAN_FILE' (it's
+   scratch, not part of the product) and make a final commit:
+   git rm $PLAN_FILE && git add -A && git commit -m \"<clear message, reference #$ISSUE_NUM>\"
+6. Push the branch: git push -u origin $FEATURE_BRANCH
    Do NOT open a pull request yourself, do NOT touch GitHub issues yet —
    that happens after independent verification.
-6. As the LAST line of your output print exactly:
+7. As the LAST line of your output print exactly:
    COMMITTED: <git sha> | <commit message>
    (or, if you could not complete the task, print exactly: NOT_COMMITTED: <reason>)"
 
@@ -287,8 +360,14 @@ if [[ "$VERDICT_LINE" == PASS* ]]; then
     echo "RESULT=FAIL reason=\"verifier approved PR #$PR_NUM but it never merged onto origin/$DEFAULT_BRANCH (closed PR, reopened issue if it had been closed)\""
   fi
 else
-  # Rejected: close the PR (branch gets recreated fresh on the next attempt
-  # anyway) so open-but-abandoned PRs don't pile up across days of retries.
-  gh pr close "$PR_NUM" --repo "$REPO_SLUG" --comment "Closing: verifier requested changes — will be re-attempted on a fresh branch." >> "$VERIFY_LOG" 2>&1
+  # Rejected: the code itself was judged wrong, not just incomplete — delete
+  # the branch, both remote (--delete-branch) and the local clone's copy, so
+  # the next attempt's resume-detection (which only resumes a branch with
+  # commits ahead of default) can never mistake rejected work for
+  # salvageable progress and build on top of it. The local delete matters
+  # separately: --delete-branch only removes origin's copy, and this script
+  # falls back to checking a local branch by that name if origin has none.
+  gh pr close "$PR_NUM" --repo "$REPO_SLUG" --delete-branch --comment "Closing: verifier requested changes — will be re-attempted on a fresh branch." >> "$VERIFY_LOG" 2>&1
+  (cd "$REPO_DIR" && git checkout "$DEFAULT_BRANCH" && git branch -D "$FEATURE_BRANCH") >> "$VERIFY_LOG" 2>&1
   echo "RESULT=FAIL reason=\"${VERDICT_LINE#FAIL: }\""
 fi
