@@ -1,0 +1,256 @@
+{
+  "_comment": "status: pending | piloting | active | done | skipped. pilot_batch marks the first 2-3 repos to run end-to-end before scaling.",
+  "excluded_pattern": [
+    "test-contrib-*",
+    "contrib-test-exp*"
+  ],
+  "pilot_batch": [
+    "llm-manager",
+    "argus-pentest",
+    "apix-gateway"
+  ],
+  "repos": [
+    {
+      "name": "upaya-jivika",
+      "status": "pending"
+    },
+    {
+      "name": "cliq",
+      "status": "pending"
+    },
+    {
+      "name": "nebula-cli-chaos",
+      "status": "pending"
+    },
+    {
+      "name": "llm-manager",
+      "status": "piloting"
+    },
+    {
+      "name": "argus-pentest",
+      "status": "piloting"
+    },
+    {
+      "name": "Nebula-Writer-2",
+      "status": "pending"
+    },
+    {
+      "name": "Nebula_cli",
+      "status": "pending"
+    },
+    {
+      "name": "apix-gateway",
+      "status": "piloting"
+    },
+    {
+      "name": "Auto-Company",
+      "status": "skipped"
+    },
+    {
+      "name": "the-rise-after-the-fall-",
+      "status": "skipped"
+    },
+    {
+      "name": "dungeon-master",
+      "status": "pending"
+    },
+    {
+      "name": "sagar0163",
+      "status": "skipped",
+      "note": "profile readme repo"
+    },
+    {
+      "name": "hermes-agent-settings",
+      "status": "pending"
+    },
+    {
+      "name": "universal_frappe_mcp",
+      "status": "pending"
+    },
+    {
+      "name": "Nebula-Writer",
+      "status": "skipped"
+    },
+    {
+      "name": "ai-switch",
+      "status": "pending"
+    },
+    {
+      "name": "api-doc-generator",
+      "status": "pending"
+    },
+    {
+      "name": "game-of-life",
+      "status": "skipped"
+    },
+    {
+      "name": "super-calculator",
+      "status": "pending"
+    },
+    {
+      "name": "chat-app",
+      "status": "pending"
+    },
+    {
+      "name": "terminal-maze",
+      "status": "skipped"
+    },
+    {
+      "name": "terminal-minesweeper",
+      "status": "skipped"
+    },
+    {
+      "name": "terminal-tetris",
+      "status": "skipped"
+    },
+    {
+      "name": "pokedex-app",
+      "status": "skipped"
+    },
+    {
+      "name": "doc-converter",
+      "status": "pending"
+    },
+    {
+      "name": "openclaw",
+      "status": "skipped"
+    },
+    {
+      "name": "llm-calculator",
+      "status": "skipped"
+    },
+    {
+      "name": "firsttry",
+      "status": "skipped"
+    },
+    {
+      "name": "ilovepdf-clone-tooling",
+      "status": "pending"
+    },
+    {
+      "name": "openclaw-hf",
+      "status": "skipped"
+    },
+    {
+      "name": "logic-gates-simulator",
+      "status": "pending"
+    },
+    {
+      "name": "terminal-snake",
+      "status": "skipped"
+    },
+    {
+      "name": "password-vault",
+      "status": "pending"
+    },
+    {
+      "name": "ai-code-reviewer",
+      "status": "pending"
+    },
+    {
+      "name": "chess-master",
+      "status": "pending"
+    },
+    {
+      "name": "budget-tracker",
+      "status": "skipped"
+    },
+    {
+      "name": "task-master",
+      "status": "skipped"
+    },
+    {
+      "name": "terminal-cs",
+      "status": "pending"
+    },
+    {
+      "name": "ascii-art-gallery",
+      "status": "skipped"
+    },
+    {
+      "name": "bt-messenger",
+      "status": "pending"
+    },
+    {
+      "name": "ai-code-explainer",
+      "status": "pending"
+    },
+    {
+      "name": "android-os-runner",
+      "status": "skipped"
+    },
+    {
+      "name": "stock-market-game",
+      "status": "pending"
+    },
+    {
+      "name": "Pokedex_Server",
+      "status": "skipped"
+    },
+    {
+      "name": "my_iot_try",
+      "status": "skipped"
+    },
+    {
+      "name": "charging_frontend",
+      "status": "pending"
+    },
+    {
+      "name": "charging_backend",
+      "status": "pending"
+    },
+    {
+      "name": "Pokedex",
+      "status": "skipped"
+    },
+    {
+      "name": "stock-simulation-game",
+      "status": "pending"
+    },
+    {
+      "name": "unique-gadgets-research",
+      "status": "skipped"
+    },
+    {
+      "name": "matrimonial-site",
+      "status": "skipped"
+    },
+    {
+      "name": "term-prod-hub",
+      "status": "pending"
+    },
+    {
+      "name": "redis-sentinel-cluster",
+      "status": "skipped"
+    },
+    {
+      "name": "terminal-dashboard",
+      "status": "skipped"
+    },
+    {
+      "name": "resume-builder",
+      "status": "pending"
+    },
+    {
+      "name": "stock-sim-v2",
+      "status": "pending"
+    },
+    {
+      "name": "stock_simulation_game_Backend",
+      "status": "skipped"
+    },
+    {
+      "name": "stock_simulation_game_Frontend",
+      "status": "pending"
+    },
+    {
+      "name": "Pokedex_UI",
+      "status": "skipped"
+    },
+    {
+      "name": "secondgitrepo",
+      "status": "skipped",
+      "note": "scratch repo"
+    }
+  ]
+}

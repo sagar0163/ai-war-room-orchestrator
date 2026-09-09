@@ -1,0 +1,13 @@
+# Runtime state — counters/locks specific to this machine's live run, not
+# source. Kept locally, not published, so a fresh clone starts clean.
+state/*.json
+state/*.corrupt-*
+logs/
+workspace/
+issues/
+
+# Local backups made during manual repo-list edits
+repos.json.bak-*
+
+*.log
+.DS_Store
