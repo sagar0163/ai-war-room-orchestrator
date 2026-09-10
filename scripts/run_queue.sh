@@ -67,7 +67,11 @@ fi
 # bubbling to the top of a recency-sorted list, hogging every single slot
 # once the daily cap is nearly exhausted (REMAINING==1) and starving every
 # other open issue on the repo. Ascending-by-number gives fair rotation.
-mapfile -t ISSUES < <(gh issue list --repo "$REPO_SLUG" --label war-room --state open --json number,title,body \
+# Wrapped in timeout: this call has no other bound, and a network/API stall
+# here previously hung the whole repo's lap for 7+ hours with nothing to
+# kill it — every dispatch further down the chain is already timeout-wrapped,
+# this was the one gap.
+mapfile -t ISSUES < <(timeout 60 gh issue list --repo "$REPO_SLUG" --label war-room --state open --json number,title,body \
   --jq 'sort_by(.number) | .[] | "\(.number)\t\(.title)\t\(.body | gsub("\n";" "))"')
 
 if (( ${#ISSUES[@]} == 0 )); then
@@ -128,7 +132,7 @@ $BODY"
   # Re-check live state before working on it — the TO_RUN list was snapshotted
   # once at the top of this script, so an issue already closed by an earlier
   # iteration (or a previous/parallel run) could still appear here stale.
-  CURRENT_STATE="$(gh issue view "$NUM" --repo "$REPO_SLUG" --json state --jq '.state' 2>/dev/null)"
+  CURRENT_STATE="$(timeout 60 gh issue view "$NUM" --repo "$REPO_SLUG" --json state --jq '.state' 2>/dev/null)"
   if [[ "$CURRENT_STATE" == "CLOSED" ]]; then
     echo "RESULT=SKIPPED reason=\"issue #$NUM already closed\"" > "$RESULTS_DIR/$NUM.result"
     reset_fail_count "$NUM"
