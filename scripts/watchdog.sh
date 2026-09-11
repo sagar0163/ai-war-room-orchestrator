@@ -19,11 +19,27 @@ log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 
 # Prevent two watchdog invocations (e.g. cron overlap) from racing to launch
 # two copies of the runner.
+#
+# Caught live: a watchdog invocation held this lock for 14+ hours straight
+# (spanning a laptop suspend/resume) with nothing to show for it, and every
+# 5-minute cron tick in between exited silently right here on the old `exit
+# 0` — so the runner sat dead the whole time with zero trace in this log.
+# Log every time the lock is contended, including how long it's been held
+# and by which PID, so a repeat of this is visible instead of silent.
 LOCK_FILE="/tmp/warroom-watchdog.lock"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
+  held_since="unknown age"
+  if lock_mtime="$(stat -c %Y "$LOCK_FILE" 2>/dev/null)"; then
+    held_since="$(( $(date +%s) - lock_mtime ))s"
+  fi
+  holder_pid="$(fuser "$LOCK_FILE" 2>/dev/null | tr -d ' ')"
+  log "lock contended (held ~${held_since}, holder pid(s): ${holder_pid:-unknown}) — skipping this tick"
   exit 0
 fi
+# Now that we hold it, stamp the lock file's mtime to now so the age check
+# above is meaningful for whoever contends next.
+touch "$LOCK_FILE" 2>/dev/null || true
 
 # Log rotation: this runs every 5 minutes forever, so logs/ grows without
 # bound otherwise. Compress anything untouched for 7+ days, delete compressed
@@ -54,7 +70,10 @@ fi
 # run_queue.sh would then just report NO_OPEN_ISSUES for every repo forever,
 # looking like healthy "nothing to do" instead of a broken credential. Catch
 # it here where a human is more likely to see the log.
-if ! gh auth status >/dev/null 2>&1; then
+# timeout-wrapped: the leading theory for the 14-hour lock hold above is a
+# network call (gh, here) stalling forever across a suspend/resume instead
+# of erroring — nothing in this script previously had a hard ceiling.
+if ! timeout 30 gh auth status >/dev/null 2>&1; then
   log "WARNING: gh auth status failed — GitHub calls will likely fail silently across the pipeline. Restarting runner anyway; check 'gh auth status' manually."
 fi
 
