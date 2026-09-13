@@ -29,11 +29,28 @@ $README_EXCERPT
 Do all of the following yourself:
 1. Research real competing/similar open-source projects in this repo's exact
    space (find actual current ones, don't guess).
-2. Run the council methodology (5 advisors -> peer review -> chairman) on:
-   'What does this repo need to add or improve to stand above its
-   competitors?'
+2. Run the council methodology (5 advisors -> peer review -> chairman) on
+   THREE questions, in this order, each building on the repo's actual code
+   (not just the README):
+   a. 'What does this repo need to add or improve to stand above its
+      competitors?' (feature/product gaps)
+   b. 'Where is this codebase inefficient, over-complicated, or carrying
+      dead weight?' — look for real optimization opportunities (slow
+      algorithms, N+1 patterns, unnecessary allocations/re-renders,
+      redundant work) and code-cleanliness issues (dead code, duplicated
+      logic, unclear abstractions, missing tests around risky code) that
+      an actual read of the source justifies — not generic advice.
+   c. 'What security issues does this codebase actually have?' — look for
+      real, specific problems (injection risks, secrets/credentials in
+      code or config, missing auth checks, unsafe deserialization,
+      outdated vulnerable dependencies, overly permissive CORS/permissions,
+      etc.), not a generic checklist. Skip this question entirely if the
+      repo is genuinely trivial (no user input, no network exposure, no
+      dependencies to speak of) rather than inventing issues for it.
 3. Turn the chairman's concrete recommendations into 3-8 well-scoped GitHub
-   issues. For each one, run:
+   issues total across all three questions above (not 3-8 per question) —
+   prioritize the most impactful ones if there are more candidates than
+   that. For each one, run:
    gh issue create --repo $REPO_SLUG --title \"<title>\" --body \"<description +
    acceptance criteria>\" --label war-room
    (create the 'war-room' label first with 'gh label create war-room
