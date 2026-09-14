@@ -79,7 +79,16 @@ fi
 
 log "continuous_runner.sh not running — restarting"
 cd "$WAR_ROOM_DIR"
-setsid nohup bash "$SCRIPT_DIR/continuous_runner.sh" >> "$WAR_ROOM_DIR/logs/continuous_runner_stdout.log" 2>&1 < /dev/null &
+# `9>&-` closes our lock fd in the child before it execs: a plain backgrounded
+# `&` job otherwise inherits this fd open (bash doesn't close-on-exec by
+# default), so the restarted runner would hold a live reference to this
+# watchdog's OWN lock for as long as it runs — silently and permanently
+# blocking every future flock attempt above, with no way to tell short of
+# inspecting /proc/<pid>/fd. Caught live: the runner launched by the last
+# manual restart had been holding this exact fd for 3 days, so every 5-minute
+# watchdog tick since had been reporting "lock contended" against itself and
+# would never have actually restarted a genuinely dead runner.
+setsid nohup bash "$SCRIPT_DIR/continuous_runner.sh" >> "$WAR_ROOM_DIR/logs/continuous_runner_stdout.log" 2>&1 9>&- < /dev/null &
 disown
 sleep 2
 if pgrep -f "bash .*${RUNNER_PATTERN}" >/dev/null 2>&1; then
