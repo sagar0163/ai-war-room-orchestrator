@@ -150,6 +150,15 @@ Review what's already there — the commits AND the plan file above — then
 continue from exactly where the previous attempt left off. Update the plan
 file's checkboxes as you go rather than starting a new plan from scratch."
 else
+  # Checkout DEFAULT_BRANCH first: the block above (lines 123-128) may have
+  # just left us sitting ON $FEATURE_BRANCH (an empty/no-progress branch, so
+  # we fall into this reset path anyway) — deleting the currently checked-out
+  # branch fails with "used by worktree", which then made the subsequent
+  # `checkout -b` fail too ("branch already exists"), leaving the worker
+  # dispatched into a broken, half-reset git state. Caught live: this exact
+  # sequence produced repeated "worker did not commit: no output" failures
+  # across an entire repo's issue batch.
+  (cd "$REPO_DIR" && git checkout "$DEFAULT_BRANCH") >> "$WORKER_LOG" 2>&1
   (cd "$REPO_DIR" && git branch -D "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
   (cd "$REPO_DIR" && git push origin --delete "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
   (cd "$REPO_DIR" && git checkout -b "$FEATURE_BRANCH") >> "$WORKER_LOG" 2>&1
