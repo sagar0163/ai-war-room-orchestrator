@@ -120,7 +120,9 @@ TO_RUN=("${FILTERED[@]:0:REMAINING}")
 echo "QUEUED: ${#TO_RUN[@]} issue(s), daily remaining before run: $REMAINING"
 
 RESULTS_DIR="$(mktemp -d)"
-TOOLS=(opencode hermes agy)
+# hermes dropped from rotation: disabled in dispatch.sh until NVIDIA_API_KEY
+# is configured (every hermes call fails immediately otherwise).
+TOOLS=(opencode agy)
 i=0
 for line in "${TO_RUN[@]}"; do
   NUM="$(cut -f1 <<<"$line")"

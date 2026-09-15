@@ -92,10 +92,15 @@ run_opencode() { try_tool opencode opencode run -m opencode/big-pickle "$FULL_PR
 run_hermes()   { try_tool hermes hermes -z "$FULL_PROMPT" -m nvidia/nemotron-3.5-lightning-30b-a3b --yolo; }
 run_agy()      { try_tool agy ~/.local/bin/agy -p "$FULL_PROMPT" --model gemini-3.1-pro-low --effort low; }
 
+# hermes disabled for now: NVIDIA_API_KEY isn't set in this environment, so
+# every hermes call fails immediately ("No usable credentials found for
+# provider 'nvidia'") — wasting a fallback slot on every single dispatch
+# across the whole pipeline. Drop it from the rotation until the credential
+# is configured; re-add run_hermes to these ORDER lists once it is.
 case "${PRIMARY:-opencode}" in
-  hermes)   ORDER=(run_hermes run_opencode run_agy) ;;
-  agy)      ORDER=(run_agy run_opencode run_hermes) ;;
-  *)        ORDER=(run_opencode run_hermes run_agy) ;;
+  hermes)   ORDER=(run_opencode run_agy) ;;
+  agy)      ORDER=(run_agy run_opencode) ;;
+  *)        ORDER=(run_opencode run_agy) ;;
 esac
 
 for fn in "${ORDER[@]}"; do
